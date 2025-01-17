@@ -4,30 +4,29 @@ import (
 	"os"
 	"testing"
 
+	"github.com/dagu-org/dagu/internal/fileutil"
 	"github.com/stretchr/testify/require"
-
-	"github.com/dagu-dev/dagu/internal/utils"
 )
 
 func TestStorage(t *testing.T) {
-	tmpDir := utils.MustTempDir("test-storage")
+	tmpDir := fileutil.MustTempDir("test-storage")
 	defer os.RemoveAll(tmpDir)
 
-	s := NewStorage(tmpDir)
+	storage := NewStorage(tmpDir)
 
 	f := "test.flag"
-	exist := s.Exists(f)
+	exist := storage.Exists(f)
 	require.False(t, exist)
 
-	err := s.Create(f)
+	err := storage.Create(f)
 	require.NoError(t, err)
 
-	exist = s.Exists(f)
+	exist = storage.Exists(f)
 	require.True(t, exist)
 
-	err = s.Delete(f)
+	err = storage.Delete(f)
 	require.NoError(t, err)
 
-	exist = s.Exists(f)
+	exist = storage.Exists(f)
 	require.False(t, exist)
 }

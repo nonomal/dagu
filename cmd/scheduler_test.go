@@ -1,23 +1,21 @@
-package cmd
+package main
 
 import (
-	"os"
 	"testing"
 	"time"
 )
 
 func TestSchedulerCommand(t *testing.T) {
-	tmpDir, _, _ := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Run("StartScheduler", func(t *testing.T) {
+		th := testSetup(t)
+		go func() {
+			th.RunCommand(t, schedulerCmd(), cmdTest{
+				args:        []string{"scheduler"},
+				expectedOut: []string{"starting dagu scheduler"},
+			})
+		}()
 
-	go func() {
-		testRunCommand(t, schedulerCmd(), cmdTest{
-			args:        []string{"scheduler"},
-			expectedOut: []string{"starting dagu scheduler"},
-		})
-	}()
-
-	time.Sleep(time.Millisecond * 500)
+		// Wait for the scheduler to start.
+		time.Sleep(time.Millisecond * 500)
+	})
 }

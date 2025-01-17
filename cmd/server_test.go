@@ -1,9 +1,8 @@
-package cmd
+package main
 
 import (
 	"fmt"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -11,21 +10,20 @@ import (
 )
 
 func TestServerCommand(t *testing.T) {
-	tmpDir, _, _ := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Run("StartServer", func(t *testing.T) {
+		th := testSetup(t)
+		go func() {
+			th.RunCommand(t, serverCmd(), cmdTest{
+				args:        []string{"server", fmt.Sprintf("--port=%s", findPort(t))},
+				expectedOut: []string{"server is running"},
+			})
+		}()
 
-	go func() {
-		testRunCommand(t, serverCmd(), cmdTest{
-			args:        []string{"server", fmt.Sprintf("--port=%s", findPort(t))},
-			expectedOut: []string{"server is running"},
-		})
-	}()
-
-	time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 500)
+	})
 }
 
+// findPort finds an available port.
 func findPort(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", ":0")

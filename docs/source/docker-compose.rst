@@ -1,48 +1,53 @@
+.. _Using Docker Compose:
 Using Docker Compose
 ===================================
 
-To automate DAG executions based on cron expressions, it is necessary to run both the ui server and scheduler process. Here is an example `docker-compose.yml` setup for running Dagu using Docker Compose.
+Here is an example `docker-compose.yml` setup for running Dagu using Docker Compose.
+
+Running Dagu with Docker Compose
+---------------------------------
 
 .. code-block:: yaml
 
-    version: "3.9"
     services:
-
-      # init container updates permission
-      init:
-        image: "ghcr.io/dagu-dev/dagu:latest"
-        user: root
-        volumes:
-          - dagu:/home/dagu/.dagu
-        command: chown -R dagu /home/dagu/.dagu/
-
-      # ui server process
-      server:
-        image: "ghcr.io/dagu-dev/dagu:latest"
-        environment:
-          - DAGU_PORT=8080
-          - DAGU_DAGS=/home/dagu/.dagu/dags
-        restart: unless-stopped
+      dagu:
+        image: "ghcr.io/dagu-org/dagu:latest"
+        container_name: dagu
+        hostname: dagu
         ports:
           - "8080:8080"
-        volumes:
-          - dagu:/home/dagu/.dagu
-          - ./dags/:/home/dagu/.dagu/dags
-        depends_on:
-          - init
-
-      # scheduler process
-      scheduler:
-        image: "ghcr.io/dagu-dev/dagu:latest"
         environment:
-          - DAGU_DAGS=/home/dagu/.dagu/dags
-        restart: unless-stopped
+          - DAGU_PORT=8080 # optional. default is 8080
+          - DAGU_TZ=Asia/Tokyo # optional. default is local timezone
+          - DAGU_BASE_PATH=/dagu # optional. default is /
+          - PUID=1000 # optional. default is 1000
+          - PGID=1000 # optional. default is 1000
         volumes:
-          - dagu:/home/dagu/.dagu
-          - ./dags/:/home/dagu/.dagu/dags
-        command: dagu scheduler
-        depends_on:
-          - init
-
+          - dagu_config:/config
     volumes:
-      dagu: {}
+      dagu_config: {}
+
+
+Enable Docker in Docker (DinD) support
+---------------------------------------
+
+.. code-block:: yaml
+
+    services:
+      dagu:
+        image: "ghcr.io/dagu-org/dagu:latest"
+        container_name: dagu
+        hostname: dagu
+        ports:
+          - "8080:8080"
+        environment:
+          - DAGU_PORT=8080 # optional. default is 8080
+          - DAGU_TZ=Asia/Tokyo # optional. default is local timezone
+        volumes:
+          - dagu_config:/config
+          - /var/run/docker.sock:/var/run/docker.sock # optional. required for docker in docker
+        command: dagu start-all
+        user: "0:0"
+        entrypoint: [] # Override any default entrypoint
+    volumes:
+      dagu_config: {}

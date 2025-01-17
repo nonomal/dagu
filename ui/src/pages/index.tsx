@@ -8,6 +8,7 @@ import DashboardTimechart from '../components/molecules/DashboardTimechart';
 import Title from '../components/atoms/Title';
 import { AppBarContext } from '../contexts/AppBarContext';
 import useSWR from 'swr';
+import { useConfig } from '../contexts/ConfigContext';
 
 type metrics = Record<SchedulerStatus, number>;
 
@@ -22,16 +23,23 @@ for (const value in SchedulerStatus) {
 function Dashboard() {
   const [metrics, setMetrics] = React.useState<metrics>(defaultMetrics);
   const appBarContext = React.useContext(AppBarContext);
-  const { data } = useSWR<ListWorkflowsResponse>(`/dags`, null, {
-    refreshInterval: 10000,
-  });
+  const config = useConfig();
+  const { data } = useSWR<ListWorkflowsResponse>(
+    `/dags?limit=${config.maxDashboardPageLimit}&remoteNode=${
+      appBarContext.selectedRemoteNode || 'local'
+    }`,
+    null,
+    {
+      refreshInterval: 10000,
+    }
+  );
 
   React.useEffect(() => {
     if (!data) {
       return;
     }
     const m = { ...defaultMetrics };
-    data.DAGs.forEach((wf) => {
+    data.DAGs?.forEach((wf) => {
       if (wf.Status && wf.Status.Status) {
         const status = wf.Status.Status;
         m[status] += 1;
@@ -79,7 +87,7 @@ function Dashboard() {
             height: '100%',
           }}
         >
-          <Title>Timeline</Title>
+          <Title>{`Timeline in ${config.tz}`}</Title>
           <DashboardTimechart data={data?.DAGs || []} />
         </Box>
       </Grid>

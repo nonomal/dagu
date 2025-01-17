@@ -4,39 +4,136 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/dagu-dev/dagu/internal/dag"
-	"github.com/dagu-dev/dagu/internal/scheduler"
-	"github.com/dagu-dev/dagu/internal/utils"
+	"github.com/dagu-org/dagu/internal/digraph"
+	"github.com/dagu-org/dagu/internal/digraph/scheduler"
+	"github.com/dagu-org/dagu/internal/stringutil"
 )
+
+type StatusFactory struct {
+	dag *digraph.DAG
+}
+
+func NewStatusFactory(dag *digraph.DAG) *StatusFactory {
+	return &StatusFactory{dag: dag}
+}
+
+func (f *StatusFactory) CreateDefault() Status {
+	return Status{
+		Name:       f.dag.Name,
+		Status:     scheduler.StatusNone,
+		StatusText: scheduler.StatusNone.String(),
+		PID:        PID(pidNotRunning),
+		Nodes:      FromSteps(f.dag.Steps),
+		OnExit:     nodeOrNil(f.dag.HandlerOn.Exit),
+		OnSuccess:  nodeOrNil(f.dag.HandlerOn.Success),
+		OnFailure:  nodeOrNil(f.dag.HandlerOn.Failure),
+		OnCancel:   nodeOrNil(f.dag.HandlerOn.Cancel),
+		Params:     strings.Join(f.dag.Params, " "),
+		ParamsList: f.dag.Params,
+		StartedAt:  stringutil.FormatTime(time.Time{}),
+		FinishedAt: stringutil.FormatTime(time.Time{}),
+	}
+}
+
+type StatusOption func(*Status)
+
+func WithNodes(nodes []scheduler.NodeData) StatusOption {
+	return func(s *Status) {
+		s.Nodes = FromNodes(nodes)
+	}
+}
+
+func WithFinishedAt(t time.Time) StatusOption {
+	return func(s *Status) {
+		s.FinishedAt = FormatTime(t)
+	}
+}
+
+func WithOnExitNode(node *scheduler.Node) StatusOption {
+	return func(s *Status) {
+		if node != nil {
+			s.OnExit = FromNode(node.Data())
+		}
+	}
+}
+
+func WithOnSuccessNode(node *scheduler.Node) StatusOption {
+	return func(s *Status) {
+		if node != nil {
+			s.OnSuccess = FromNode(node.Data())
+		}
+	}
+}
+
+func WithOnFailureNode(node *scheduler.Node) StatusOption {
+	return func(s *Status) {
+		if node != nil {
+			s.OnFailure = FromNode(node.Data())
+		}
+	}
+}
+
+func WithOnCancelNode(node *scheduler.Node) StatusOption {
+	return func(s *Status) {
+		if node != nil {
+			s.OnCancel = FromNode(node.Data())
+		}
+	}
+}
+
+func WithLogFilePath(logFilePath string) StatusOption {
+	return func(s *Status) {
+		s.Log = logFilePath
+	}
+}
+
+func (f *StatusFactory) Create(
+	requestID string,
+	status scheduler.Status,
+	pid int,
+	startedAt time.Time,
+	opts ...StatusOption,
+) Status {
+	statusObj := f.CreateDefault()
+	statusObj.RequestID = requestID
+	statusObj.Status = status
+	statusObj.StatusText = status.String()
+	statusObj.PID = PID(pid)
+	statusObj.StartedAt = FormatTime(startedAt)
+
+	for _, opt := range opts {
+		opt(&statusObj)
+	}
+
+	return statusObj
+}
+
+func StatusFromJSON(s string) (*Status, error) {
+	status := new(Status)
+	err := json.Unmarshal([]byte(s), status)
+	if err != nil {
+		return nil, err
+	}
+	return status, err
+}
+
+type StatusFile struct {
+	File   string
+	Status Status
+}
 
 type StatusResponse struct {
 	Status *Status `json:"status"`
 }
 
-type Pid int
-
-const PidNotRunning Pid = -1
-
-func (p Pid) String() string {
-	if p == PidNotRunning {
-		return ""
-	}
-	return fmt.Sprintf("%d", p)
-}
-
-func (p Pid) IsRunning() bool {
-	return p != PidNotRunning
-}
-
 type Status struct {
-	RequestId  string           `json:"RequestId"`
+	RequestID  string           `json:"RequestId"`
 	Name       string           `json:"Name"`
 	Status     scheduler.Status `json:"Status"`
 	StatusText string           `json:"StatusText"`
-	Pid        Pid              `json:"Pid"`
+	PID        PID              `json:"Pid"`
 	Nodes      []*Node          `json:"Nodes"`
 	OnExit     *Node            `json:"OnExit"`
 	OnSuccess  *Node            `json:"OnSuccess"`
@@ -45,84 +142,8 @@ type Status struct {
 	StartedAt  string           `json:"StartedAt"`
 	FinishedAt string           `json:"FinishedAt"`
 	Log        string           `json:"Log"`
-	Params     string           `json:"Params"`
-	mu         sync.RWMutex
-}
-
-type StatusFile struct {
-	File   string
-	Status *Status
-}
-
-func StatusFromJson(s string) (*Status, error) {
-	status := &Status{}
-	err := json.Unmarshal([]byte(s), status)
-	if err != nil {
-		return nil, err
-	}
-	return status, err
-}
-
-func NewStatusDefault(d *dag.DAG) *Status {
-	return NewStatus(d, nil, scheduler.StatusNone, int(PidNotRunning), nil, nil)
-}
-
-func Time(t time.Time) *time.Time {
-	return &t
-}
-
-type NodeStepPair struct {
-	Node scheduler.NodeState
-	Step dag.Step
-}
-
-func NewStatus(
-	d *dag.DAG,
-	nodes []NodeStepPair,
-	status scheduler.Status,
-	pid int,
-	startTime, endTime *time.Time,
-) *Status {
-	var onExit, onSuccess, onFailure, onCancel *Node
-	onExit = nodeOrNil(d.HandlerOn.Exit)
-	onSuccess = nodeOrNil(d.HandlerOn.Success)
-	onFailure = nodeOrNil(d.HandlerOn.Failure)
-	onCancel = nodeOrNil(d.HandlerOn.Cancel)
-	return &Status{
-		Name:       d.Name,
-		Status:     status,
-		StatusText: status.String(),
-		Pid:        Pid(pid),
-		Nodes:      nodesOrSteps(nodes, d.Steps),
-		OnExit:     onExit,
-		OnSuccess:  onSuccess,
-		OnFailure:  onFailure,
-		OnCancel:   onCancel,
-		StartedAt:  formatTime(startTime),
-		FinishedAt: formatTime(endTime),
-		Params:     strings.Join(d.Params, " "),
-	}
-}
-
-func nodeOrNil(s *dag.Step) *Node {
-	if s == nil {
-		return nil
-	}
-	return NewNode(*s)
-}
-
-func nodesOrSteps(nodes []NodeStepPair, steps []dag.Step) []*Node {
-	if len(nodes) != 0 {
-		return FromNodes(nodes)
-	}
-	return FromSteps(steps)
-}
-
-func formatTime(val *time.Time) string {
-	if val == nil || val.IsZero() {
-		return ""
-	}
-	return utils.FormatTime(*val)
+	Params     string           `json:"Params,omitempty"`
+	ParamsList []string         `json:"ParamsList,omitempty"`
 }
 
 func (st *Status) CorrectRunningStatus() {
@@ -132,12 +153,35 @@ func (st *Status) CorrectRunningStatus() {
 	}
 }
 
-func (st *Status) ToJson() ([]byte, error) {
-	st.mu.RLock()
-	defer st.mu.RUnlock()
-	js, err := json.Marshal(st)
-	if err != nil {
-		return []byte{}, err
+func FormatTime(val time.Time) string {
+	if val.IsZero() {
+		return ""
 	}
-	return js, nil
+	return stringutil.FormatTime(val)
+}
+
+func Time(t time.Time) *time.Time {
+	return &t
+}
+
+type PID int
+
+const pidNotRunning PID = -1
+
+func (p PID) String() string {
+	if p == pidNotRunning {
+		return ""
+	}
+	return fmt.Sprintf("%d", p)
+}
+
+func (p PID) IsRunning() bool {
+	return p != pidNotRunning
+}
+
+func nodeOrNil(s *digraph.Step) *Node {
+	if s == nil {
+		return nil
+	}
+	return NewNode(*s)
 }

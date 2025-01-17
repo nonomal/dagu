@@ -1,7 +1,7 @@
-.. _examples:
+.. _Examples:
 
 Examples
-========
+============
 
 .. contents::
     :local:
@@ -11,14 +11,15 @@ Hello World
 
 .. code-block:: yaml
 
-  name: hello world
+  params:
+    - NAME: "Dagu"
   steps:
-    - name: s1
-      command: echo hello world
-    - name: s2
-      command: echo done!
+    - name: Hello world
+      command: echo Hello $NAME
+    - name: Done
+      command: echo Done!
       depends:
-        - s1
+        - Hello world
 
 
 Conditional Steps
@@ -45,7 +46,7 @@ Conditional Steps
         - condition: "$1"
           expected: bar
 
-.. image:: https://raw.githubusercontent.com/yohamta/dagu/main/examples/images/conditional.png
+.. image:: https://raw.githubusercontent.com/dagu-org/dagu/main/examples/images/conditional.png
 
 
 File Output
@@ -84,10 +85,9 @@ Running a Docker Container
       executor: 
         type: docker
         config:
-          image: "denoland/deno:1.10.3"
-          host:
-            autoRemove: true
-      command: run https://examples.deno.land/hello-world.ts
+          image: "denoland/deno:latest"
+          autoRemove: true
+      command: run https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts
 
 See :ref:`docker executor` for more details.
 
@@ -179,7 +179,7 @@ Expected Output:
 Sending Email Notifications
 ---------------------------
 
-.. image:: https://raw.githubusercontent.com/yohamta/dagu/main/examples/images/email.png
+.. image:: https://raw.githubusercontent.com/dagu-org/dagu/main/examples/images/email.png
 
 .. code-block:: yaml
 

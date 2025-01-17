@@ -1,9 +1,7 @@
-# build
-bin/*
-dist/
-service/frontend/assets/fonts/*
-service/frontend/assets/*
-!service/frontend/assets/.gitkeep
+# frontend assets
+internal/frontend/assets/fonts/*
+internal/frontend/assets/*
+!internal/frontend/assets/.gitkeep
 
 # NVM
 .nvmrc
@@ -14,12 +12,14 @@ tmp/*
 # MacOS
 .DS_Store
 
-# VSCode
-.vscode
-
 # Goland
 .idea
 
-# certs
-cert/*.pem
-cert/*.srl
+# Directory for local development
+.local/
+
+# Coverage files
+coverage.*
+
+# Debug files
+__debug_bin*

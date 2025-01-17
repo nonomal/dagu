@@ -1,65 +1,69 @@
-package cmd
+package main
 
 import (
-	"os"
+	"context"
 	"testing"
 	"time"
 
-	"github.com/dagu-dev/dagu/internal/config"
-	"github.com/dagu-dev/dagu/internal/engine"
-	"github.com/dagu-dev/dagu/internal/persistence/client"
-	"github.com/dagu-dev/dagu/internal/scheduler"
+	"github.com/dagu-org/dagu/internal/digraph"
+	"github.com/dagu-org/dagu/internal/digraph/scheduler"
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	waitForStatusUpdate = time.Millisecond * 100
+)
+
 func TestRestartCommand(t *testing.T) {
-	tmpDir, e, _ := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Run("RestartDAG", func(t *testing.T) {
+		th := testSetup(t)
+		dagFile := th.DAGFile("restart.yaml")
 
-	dagFile := testDAGFile("restart.yaml")
+		go func() {
+			// Start a DAG to restart.
+			args := []string{"start", `--params="foo"`, dagFile.Path}
+			th.RunCommand(t, startCmd(), cmdTest{args: args})
+		}()
 
-	// Start the DAG.
-	go func() {
-		testRunCommand(t, startCmd(), cmdTest{args: []string{"start", `--params="foo"`, dagFile}})
-	}()
+		time.Sleep(waitForStatusUpdate)
 
-	time.Sleep(time.Millisecond * 100)
+		// Wait for the DAG running.
+		dagFile.AssertCurrentStatus(t, scheduler.StatusRunning)
 
-	// Wait for the DAG running.
-	testStatusEventual(t, e, dagFile, scheduler.StatusRunning)
+		// Restart the DAG.
+		done := make(chan struct{})
+		go func() {
+			args := []string{"restart", dagFile.Path}
+			th.RunCommand(t, restartCmd(), cmdTest{args: args})
+			close(done)
+		}()
 
-	// Restart the DAG.
-	done := make(chan struct{})
-	go func() {
-		testRunCommand(t, restartCmd(), cmdTest{args: []string{"restart", dagFile}})
-		close(done)
-	}()
+		time.Sleep(waitForStatusUpdate)
 
-	time.Sleep(time.Millisecond * 100)
+		// Wait for the DAG running again.
+		dagFile.AssertCurrentStatus(t, scheduler.StatusRunning)
 
-	// Wait for the DAG running again.
-	testStatusEventual(t, e, dagFile, scheduler.StatusRunning)
+		// Stop the restarted DAG.
+		th.RunCommand(t, stopCmd(), cmdTest{args: []string{"stop", dagFile.Path}})
 
-	// Stop the restarted DAG.
-	testRunCommand(t, stopCmd(), cmdTest{args: []string{"stop", dagFile}})
+		time.Sleep(waitForStatusUpdate)
 
-	time.Sleep(time.Millisecond * 100)
+		// Wait for the DAG is stopped.
+		dagFile.AssertCurrentStatus(t, scheduler.StatusNone)
 
-	// Wait for the DAG is stopped.
-	testStatusEventual(t, e, dagFile, scheduler.StatusNone)
+		// Check parameter was the same as the first execution
+		dag, err := digraph.Load(th.Context, dagFile.Path, digraph.WithBaseConfig(th.Config.Paths.BaseConfig))
+		require.NoError(t, err)
 
-	// Check parameter was the same as the first execution
-	d, err := loadDAG(dagFile, "")
-	require.NoError(t, err)
+		setup := newSetup(th.Config)
+		client, err := setup.client()
+		require.NoError(t, err)
 
-	df := client.NewDataStoreFactory(config.Get())
-	e = engine.NewFactory(df, config.Get()).Create()
+		recentHistory := client.GetRecentHistory(context.Background(), dag, 2)
 
-	sts := e.GetRecentHistory(d, 2)
-	require.Len(t, sts, 2)
-	require.Equal(t, sts[0].Status.Params, sts[1].Status.Params)
+		require.Len(t, recentHistory, 2)
+		require.Equal(t, recentHistory[0].Status.Params, recentHistory[1].Status.Params)
 
-	<-done
+		<-done
+	})
 }

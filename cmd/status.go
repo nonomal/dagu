@@ -1,36 +1,56 @@
-package cmd
+package main
 
 import (
-	"log"
+	"fmt"
 
-	"github.com/dagu-dev/dagu/internal/config"
-	"github.com/dagu-dev/dagu/internal/engine"
-	"github.com/dagu-dev/dagu/internal/persistence/client"
-	"github.com/dagu-dev/dagu/internal/persistence/model"
+	"github.com/dagu-org/dagu/internal/config"
+	"github.com/dagu-org/dagu/internal/digraph"
+	"github.com/dagu-org/dagu/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <DAG file>",
+		Use:   "status /path/to/spec.yaml",
 		Short: "Display current status of the DAG",
-		Long:  `dagu status <DAG file>`,
+		Long:  `dagu status /path/to/spec.yaml`,
 		Args:  cobra.ExactArgs(1),
-		PreRun: func(cmd *cobra.Command, args []string) {
-			cobra.CheckErr(config.LoadConfig())
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			loadedDAG, err := loadDAG(args[0], "")
-			checkError(err)
-
-			df := client.NewDataStoreFactory(config.Get())
-			e := engine.NewFactory(df, config.Get()).Create()
-
-			status, err := e.GetCurrentStatus(loadedDAG)
-			checkError(err)
-
-			res := &model.StatusResponse{Status: status}
-			log.Printf("Pid=%d Status=%s", res.Status.Pid, res.Status.Status)
-		},
+		RunE:  wrapRunE(runStatus),
 	}
+}
+
+func runStatus(cmd *cobra.Command, args []string) error {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	setup := newSetup(cfg)
+
+	ctx := setup.loggerContext(cmd.Context(), false)
+
+	// Load the DAG
+	dag, err := digraph.Load(ctx, args[0], digraph.WithBaseConfig(cfg.Paths.BaseConfig))
+	if err != nil {
+		logger.Error(ctx, "Failed to load DAG", "path", args[0], "err", err)
+		return fmt.Errorf("failed to load DAG from %s: %w", args[0], err)
+	}
+
+	cli, err := setup.client()
+	if err != nil {
+		logger.Error(ctx, "failed to initialize client", "err", err)
+		return fmt.Errorf("failed to initialize client: %w", err)
+	}
+
+	status, err := cli.GetCurrentStatus(ctx, dag)
+	if err != nil {
+		logger.Error(ctx, "Failed to retrieve current status", "dag", dag.Name, "err", err)
+		return fmt.Errorf("failed to retrieve current status: %w", err)
+	}
+
+	// Log the status information
+	logger.Info(ctx, "Current status", "pid", status.PID, "status", status.Status)
+
+	return nil
 }

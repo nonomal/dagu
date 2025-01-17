@@ -1,36 +1,39 @@
-package cmd
+package main
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/dagu-dev/dagu/internal/scheduler"
+	"github.com/dagu-org/dagu/internal/digraph/scheduler"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRetryCommand(t *testing.T) {
-	tmpDir, e, _ := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Run("RetryDAG", func(t *testing.T) {
+		th := testSetup(t)
 
-	dagFile := testDAGFile("retry.yaml")
+		dagFile := th.DAGFile("retry.yaml")
 
-	// Run a DAG.
-	testRunCommand(t, startCmd(), cmdTest{args: []string{"start", `--params="foo"`, dagFile}})
+		// Run a DAG.
+		args := []string{"start", `--params="foo"`, dagFile.Path}
+		th.RunCommand(t, startCmd(), cmdTest{args: args})
 
-	// Find the request ID.
-	s, err := e.GetStatus(dagFile)
-	require.NoError(t, err)
-	require.Equal(t, s.Status.Status, scheduler.StatusSuccess)
-	require.NotNil(t, s.Status)
+		// Find the request ID.
+		cli := th.Client
+		ctx := context.Background()
+		status, err := cli.GetStatus(ctx, dagFile.Path)
+		require.NoError(t, err)
+		require.Equal(t, status.Status.Status, scheduler.StatusSuccess)
+		require.NotNil(t, status.Status)
 
-	reqID := s.Status.RequestId
+		requestID := status.Status.RequestID
 
-	// Retry with the request ID.
-	testRunCommand(t, retryCmd(), cmdTest{
-		args:        []string{"retry", fmt.Sprintf("--req=%s", reqID), dagFile},
-		expectedOut: []string{"param is foo"},
+		// Retry with the request ID.
+		args = []string{"retry", fmt.Sprintf("--req=%s", requestID), dagFile.Path}
+		th.RunCommand(t, retryCmd(), cmdTest{
+			args:        args,
+			expectedOut: []string{`params=[foo]`},
+		})
 	})
 }

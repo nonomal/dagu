@@ -1,32 +1,40 @@
-package cmd
+package main
 
 import (
-	"os"
 	"testing"
 )
 
 func TestStartCommand(t *testing.T) {
-	tmpDir, _, _ := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Parallel()
+
+	th := testSetup(t)
 
 	tests := []cmdTest{
 		{
-			args:        []string{"start", testDAGFile("start.yaml")},
-			expectedOut: []string{"1 finished"},
+			name:        "StartDAG",
+			args:        []string{"start", th.DAGFile("success.yaml").Path},
+			expectedOut: []string{"Step execution started"},
 		},
 		{
-			args:        []string{"start", testDAGFile("start_with_params.yaml")},
-			expectedOut: []string{"params is p1 and p2"},
+			name:        "StartDAGWithDefaultParams",
+			args:        []string{"start", th.DAGFile("params.yaml").Path},
+			expectedOut: []string{`params="[p1 p2]"`},
 		},
 		{
-			args:        []string{"start", `--params="p3 p4"`, testDAGFile("start_with_params.yaml")},
-			expectedOut: []string{"params is p3 and p4"},
+			name:        "StartDAGWithParams",
+			args:        []string{"start", `--params="p3 p4"`, th.DAGFile("params.yaml").Path},
+			expectedOut: []string{`params="[p3 p4]"`},
+		},
+		{
+			name:        "StartDAGWithParamsAfterDash",
+			args:        []string{"start", th.DAGFile("params.yaml").Path, "--", "p5", "p6"},
+			expectedOut: []string{`params="[p5 p6]"`},
 		},
 	}
 
 	for _, tc := range tests {
-		testRunCommand(t, startCmd(), tc)
+		t.Run(tc.name, func(t *testing.T) {
+			th.RunCommand(t, startCmd(), tc)
+		})
 	}
 }

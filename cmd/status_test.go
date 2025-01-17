@@ -1,35 +1,44 @@
-package cmd
+package main
 
 import (
-	"github.com/dagu-dev/dagu/internal/scheduler"
-	"os"
 	"testing"
+
+	"github.com/dagu-org/dagu/internal/digraph/scheduler"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStatusCommand(t *testing.T) {
-	tmpDir, _, df := setupTest(t)
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
+	t.Run("StatusDAG", func(t *testing.T) {
+		th := testSetup(t)
 
-	dagFile := testDAGFile("status.yaml")
+		dagFile := th.DAGFile("long.yaml")
 
-	// Start the DAG.
-	done := make(chan struct{})
-	go func() {
-		testRunCommand(t, startCmd(), cmdTest{args: []string{"start", dagFile}})
-		close(done)
-	}()
+		done := make(chan struct{})
+		go func() {
+			// Start a DAG to check the status.
+			args := []string{"start", dagFile.Path}
+			th.RunCommand(t, startCmd(), cmdTest{args: args})
+			close(done)
+		}()
 
-	testLastStatusEventual(t, df.NewHistoryStore(), dagFile, scheduler.StatusRunning)
+		require.Eventually(t, func() bool {
+			status := th.HistoryStore.ReadStatusRecent(th.Context, dagFile.Path, 1)
+			if len(status) < 1 {
+				return false
+			}
+			println(status[0].Status.Status.String())
+			return scheduler.StatusRunning == status[0].Status.Status
+		}, waitForStatusTimeout, tick)
 
-	// Check the current status.
-	testRunCommand(t, statusCmd(), cmdTest{
-		args:        []string{"status", dagFile},
-		expectedOut: []string{"Status=running"},
+		// Check the current status.
+		th.RunCommand(t, statusCmd(), cmdTest{
+			args:        []string{"status", dagFile.Path},
+			expectedOut: []string{"status=running"},
+		})
+
+		// Stop the DAG.
+		args := []string{"stop", dagFile.Path}
+		th.RunCommand(t, stopCmd(), cmdTest{args: args})
+		<-done
 	})
-
-	// Stop the DAG.
-	testRunCommand(t, stopCmd(), cmdTest{args: []string{"stop", dagFile}})
-	<-done
 }
